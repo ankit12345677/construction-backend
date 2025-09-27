@@ -193,6 +193,11 @@ app.use(cors());
 app.use(express.json());
 
 // Load Google Sheets credentials
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+  console.error("ERROR: GOOGLE_APPLICATION_CREDENTIALS_JSON is not set");
+  process.exit(1);
+}
+
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
