@@ -192,6 +192,11 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+console.log('📧 Email User:', process.env.EMAIL_USER);
+console.log('📧 Email Pass:', process.env.EMAIL_PASS);
+console.log('📄 Sheet ID:', process.env.SHEET_ID);
+console.log('🖥️ Port:', process.env.PORT);
+
 // Load Google Sheets credentials
 if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
   console.error("ERROR: GOOGLE_APPLICATION_CREDENTIALS_JSON is not set");
