@@ -1,3 +1,4 @@
 node_modules/
 .env
 contact_submissions.xlsx
+credentials.json
