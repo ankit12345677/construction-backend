@@ -194,7 +194,7 @@ app.use(express.json());
 
 // Load Google Sheets credentials
 const auth = new google.auth.GoogleAuth({
-  keyFile: "credentials.json", // downloaded from Google Cloud
+  credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
