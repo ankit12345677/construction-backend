@@ -1,9 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
-const XLSX = require('xlsx');
-const fs = require('fs');
-const path = require('path');
+const { google } = require('googleapis');
 require('dotenv').config();
 
 const app = express();
@@ -14,94 +12,69 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Email transporter configuration
+// Gmail transporter
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
-  secure: false, // TLS
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
   }
 });
-transporter.verify((error, success) => {
-  if (error) console.log("SMTP connection failed ❌", error);
-  else console.log("SMTP server ready ✅");
+
+transporter.verify((err, success) => {
+  if(err) console.log("SMTP connection failed ❌", err);
+  else console.log("SMTP ready ✅");
 });
 
+// Google Sheets setup
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 
+const auth = new google.auth.GoogleAuth({
+  credentials,
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+});
 
-// Ensure Excel file exists
-const excelFilePath = path.join('/tmp', 'contact_submissions.xlsx');
+const sheets = google.sheets({ version: 'v4', auth });
+const SHEET_ID = process.env.SHEET_ID;
 
-const initializeExcelFile = () => {
-  if (!fs.existsSync(excelFilePath)) {
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet([], {
-      header: ['timestamp', 'name', 'email', 'subject', 'message', 'phone']
-    });
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Submissions');
-    XLSX.writeFile(workbook, excelFilePath);
-  }
-};
-
-// Initialize Excel file on server start
-initializeExcelFile();
-
-// Function to append data to Excel
-const appendToExcel = (data) => {
+// Function to append submission to Google Sheets
+async function appendToSheet(data) {
   try {
-    const workbook = XLSX.readFile(excelFilePath);
-    const worksheet = workbook.Sheets['Submissions'];
-    
-    // Convert worksheet to JSON
-    const existingData = XLSX.utils.sheet_to_json(worksheet);
-    
-    // Add new data with timestamp
-    const newData = {
-      timestamp: new Date().toISOString(),
-      ...data
-    };
-    
-    existingData.push(newData);
-    
-    // Create new worksheet with updated data
-    const newWorksheet = XLSX.utils.json_to_sheet(existingData);
-    
-    // Replace the worksheet in the workbook
-    workbook.Sheets['Submissions'] = newWorksheet;
-    
-    // Write the updated workbook to file
-    XLSX.writeFile(workbook, excelFilePath);
-    
-    console.log('Data successfully appended to Excel file');
-  } catch (error) {
-    console.error('Error appending to Excel:', error);
-    throw error;
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: 'Submissions!A:F', // Make sure your sheet has headers: timestamp,name,email,subject,message,phone
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[
+          new Date().toISOString(),
+          data.name,
+          data.email,
+          data.subject,
+          data.message,
+          data.phone || 'Not provided'
+        ]]
+      }
+    });
+    console.log('Data appended to Google Sheet ✅');
+  } catch(err) {
+    console.error('Error appending to Google Sheet:', err);
+    throw err;
   }
-};
+}
 
 // Contact form endpoint
 app.post('/api/contact', async (req, res) => {
   try {
     const { name, email, subject, message, phone } = req.body;
 
-    if (!name || !email || !subject || !message) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Please fill all required fields' 
-      });
-    }
+    if (!name || !email || !subject || !message)
+      return res.status(400).json({ success: false, message: 'Please fill all required fields' });
 
-    appendToExcel({ name, email, subject, message, phone: phone || 'Not provided' });
+    await appendToSheet({ name, email, subject, message, phone });
 
-    // const mailOptions = {
-    //   from: process.env.EMAIL_USER,
-    //   to: email,
-    //   subject: `New Contact Form Submission: ${subject}`,
-    //   html: `<p>${message}</p>`
-    // };
-
+    // Email to user
     const userMailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
@@ -125,35 +98,37 @@ app.post('/api/contact', async (req, res) => {
       `
     };
 
-
     await transporter.sendMail(userMailOptions);
 
     res.json({ success: true, message: 'Message sent successfully!' });
 
   } catch (error) {
-    console.error('🔥 Detailed error:', error);  // <-- Add this line
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error sending message. Please try again later.' 
-    });
+    console.error('🔥 Detailed error:', error);
+    res.status(500).json({ success: false, message: 'Error sending message. Please try again later.' });
   }
 });
 
-
-// Endpoint to download Excel file (optional - for admin)
-app.get('/api/download-submissions', (req, res) => {
+// Optional: download submissions as Excel (generate from Google Sheets)
+app.get('/api/download-submissions', async (req, res) => {
   try {
-    if (fs.existsSync(excelFilePath)) {
-      res.download(excelFilePath, 'contact_submissions.xlsx');
-    } else {
-      res.status(404).json({ success: false, message: 'No submissions found' });
-    }
-  } catch (error) {
-    console.error('Error downloading file:', error);
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'Submissions!A:F'
+    });
+
+    const XLSX = require('xlsx');
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(result.data.values || []);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Submissions');
+
+    const tempFile = '/tmp/contact_submissions.xlsx';
+    XLSX.writeFile(workbook, tempFile);
+    res.download(tempFile, 'contact_submissions.xlsx');
+
+  } catch (err) {
+    console.error('Error downloading submissions:', err);
     res.status(500).json({ success: false, message: 'Error downloading file' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
