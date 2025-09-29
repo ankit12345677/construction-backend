@@ -32,7 +32,7 @@ transporter.verify((error, success) => {
 
 
 // Ensure Excel file exists
-const excelFilePath = path.join(__dirname, 'contact_submissions.xlsx');
+const excelFilePath = path.join('/tmp', 'contact_submissions.xlsx');
 
 const initializeExcelFile = () => {
   if (!fs.existsSync(excelFilePath)) {
