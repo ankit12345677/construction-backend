@@ -1,18 +1,45 @@
-const express = require('express');
-const cors = require('cors');
-const nodemailer = require('nodemailer');
-const { google } = require('googleapis');
-require('dotenv').config();
+require("dotenv").config()
+const express = require("express");
+const cors = require("cors");
+const nodemailer = require("nodemailer");
+const { google } = require("googleapis");
+const fs = require("fs");
+const path = require("path")
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
 
-// Gmail transporter
+console.log('📧 Email User:', process.env.EMAIL_USER);
+console.log('📧 Email Pass:', process.env.EMAIL_PASS);
+console.log('📄 Sheet ID:', process.env.SHEET_ID);
+console.log('🖥️ Port:', process.env.PORT);
+
+
+// const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+
+
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    type: process.env.GOOGLE_TYPE,
+    project_id: process.env.GOOGLE_PROJECT_ID,
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    auth_uri: process.env.GOOGLE_AUTH_URI,
+    token_uri: process.env.GOOGLE_TOKEN_URI,
+    auth_provider_x509_cert_url: process.env.GOOGLE_AUTH_PROVIDER_CERT,
+    client_x509_cert_url: process.env.GOOGLE_CLIENT_CERT
+  },
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+});
+
+const SHEET_ID = process.env.SHEET_ID; // add this in Railway/Render env vars
+
+// Nodemailer config
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
@@ -22,118 +49,62 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 });
-
-transporter.verify((err, success) => {
-  if(err) console.log("SMTP connection failed ❌", err);
-  else console.log("SMTP ready ✅");
-});
-
-// Google Sheets setup
-if (!process.env.GOOGLE_CREDENTIALS) {
-  throw new Error("GOOGLE_CREDENTIALS env variable is missing!");
-}
-
-const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-
-
-
-const auth = new google.auth.GoogleAuth({
-  credentials,
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-});
-
-const sheets = google.sheets({ version: 'v4', auth });
-const SHEET_ID = process.env.SHEET_ID;
-
-// Function to append submission to Google Sheets
-async function appendToSheet(data) {
-  try {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: 'Submissions!A:F', // Make sure your sheet has headers: timestamp,name,email,subject,message,phone
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [[
-          new Date().toISOString(),
-          data.name,
-          data.email,
-          data.subject,
-          data.message,
-          data.phone || 'Not provided'
-        ]]
-      }
-    });
-    console.log('Data appended to Google Sheet ✅');
-  } catch(err) {
-    console.error('Error appending to Google Sheet:', err);
-    throw err;
+// Check SMTP connection
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("SMTP connection failed ❌", error);
+  } else {
+    console.log("SMTP connection successful ✅");
   }
-}
+});
+
 
 // Contact form endpoint
-app.post('/api/contact', async (req, res) => {
+app.post("/api/contact", async (req, res) => {
   try {
     const { name, email, subject, message, phone } = req.body;
 
-    if (!name || !email || !subject || !message)
-      return res.status(400).json({ success: false, message: 'Please fill all required fields' });
+    if (!name || !email || !subject || !message) {
+      return res.status(400).json({ success: false, message: "Please fill all required fields" });
+    }
 
-    await appendToSheet({ name, email, subject, message, phone });
+    // Save to Google Sheet
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: "v4", auth: client });
 
-    // Email to user
-    const userMailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Thank you for contacting Azza Construction',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #333;">Thank You for Contacting Azza Construction!</h2>
-          <p>Dear ${name},</p>
-          <p>We have received your message and will get back to you within 24 hours.</p>
-          <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <p><strong>Your Message:</strong></p>
-            <p>${message}</p>
-          </div>
-          <p><strong>Our Contact Information:</strong></p>
-          <p>📞 Phone: (+91) 73041 21012</p>
-          <p>✉️ Email: azzaconstruction55@gmail.com</p>
-          <p>📍 Address: Oppo Jaliwala building, Atmaram nivas, shop no 5, Mumbai 400006</p>
-          <br>
-          <p>Best regards,<br>The Azza Construction Team</p>
-        </div>
-      `
-    };
-
-    await transporter.sendMail(userMailOptions);
-
-    res.json({ success: true, message: 'Message sent successfully!' });
-
-  } catch (error) {
-    console.error('🔥 Detailed error:', error);
-    res.status(500).json({ success: false, message: 'Error sending message. Please try again later.' });
-  }
-});
-
-// Optional: download submissions as Excel (generate from Google Sheets)
-app.get('/api/download-submissions', async (req, res) => {
-  try {
-    const result = await sheets.spreadsheets.values.get({
+    await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: 'Submissions!A:F'
+      range: "Sheet1!A:F",
+      valueInputOption: "USER_ENTERED",
+      resource: {
+        values: [[new Date().toISOString(), name, email, subject, message, phone || "Not provided"]],
+      },
     });
 
-    const XLSX = require('xlsx');
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet(result.data.values || []);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Submissions');
+    // Send email to admin
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: "azzaconstruction55@gmail.com",
+      subject: `New Contact Form Submission: ${subject}`,
+      html: `<p><strong>Name:</strong> ${name}</p>
+             <p><strong>Email:</strong> ${email}</p>
+             <p><strong>Phone:</strong> ${phone || "Not provided"}</p>
+             <p><strong>Message:</strong> ${message}</p>`,
+    });
 
-    const tempFile = '/tmp/contact_submissions.xlsx';
-    XLSX.writeFile(workbook, tempFile);
-    res.download(tempFile, 'contact_submissions.xlsx');
+    // Confirmation email to user
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Thank you for contacting Azza Construction",
+      html: `<p>Dear ${name},</p>
+             <p>We have received your message and will get back to you soon.</p>`,
+    });
 
-  } catch (err) {
-    console.error('Error downloading submissions:', err);
-    res.status(500).json({ success: false, message: 'Error downloading file' });
+    res.json({ success: true, message: "Message sent and saved to Google Sheets!" });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ success: false, message: "Error processing request" });
   }
 });
 
