@@ -18,16 +18,21 @@ app.use(express.static('public'));
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
-  secure: false, // true for port 465
+  secure: false, // TLS
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
   }
 });
+transporter.verify((error, success) => {
+  if (error) console.log("SMTP connection failed ❌", error);
+  else console.log("SMTP server ready ✅");
+});
+
 
 
 // Ensure Excel file exists
-const excelFilePath = path.join(__dirname, 'contact_submissions.xlsx');
+const excelFilePath = path.join('/tmp', 'contact_submissions.xlsx');
 
 const initializeExcelFile = () => {
   if (!fs.existsSync(excelFilePath)) {
@@ -81,7 +86,6 @@ app.post('/api/contact', async (req, res) => {
   try {
     const { name, email, subject, message, phone } = req.body;
 
-    // Validate required fields
     if (!name || !email || !subject || !message) {
       return res.status(400).json({ 
         success: false, 
@@ -89,77 +93,28 @@ app.post('/api/contact', async (req, res) => {
       });
     }
 
-    // Save to Excel
-    const excelData = { name, email, subject, message, phone: phone || 'Not provided' };
-    appendToExcel(excelData);
+    appendToExcel({ name, email, subject, message, phone: phone || 'Not provided' });
 
-    // Email content
     const mailOptions = {
       from: process.env.EMAIL_USER,
-      to: 'azzaconstruction55@gmail.com',
+      to: email,
       subject: `New Contact Form Submission: ${subject}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #333;">New Contact Form Submission</h2>
-          <div style="background: #f9f9f9; padding: 20px; border-radius: 5px;">
-            <p><strong>Name:</strong> ${name}</p>
-            <p><strong>Email:</strong> ${email}</p>
-            <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
-            <p><strong>Subject:</strong> ${subject}</p>
-            <p><strong>Message:</strong></p>
-            <div style="background: white; padding: 15px; border-left: 4px solid #007bff; margin: 10px 0;">
-              ${message.replace(/\n/g, '<br>')}
-            </div>
-          </div>
-          <p style="color: #666; font-size: 12px; margin-top: 20px;">
-            This email was sent from your website contact form.
-          </p>
-        </div>
-      `
+      html: `<p>${message}</p>`
     };
 
-    // Send email
     await transporter.sendMail(mailOptions);
 
-    // Send confirmation email to user
-    const userMailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Thank you for contacting Azza Construction',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #333;">Thank You for Contacting Azza Construction!</h2>
-          <p>Dear ${name},</p>
-          <p>We have received your message and will get back to you within 24 hours.</p>
-          <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <p><strong>Your Message:</strong></p>
-            <p>${message}</p>
-          </div>
-          <p><strong>Our Contact Information:</strong></p>
-          <p>📞 Phone: (+91) 73041 21012</p>
-          <p>✉️ Email: azzaconstruction55@gmail.com</p>
-          <p>📍 Address: Oppo Jaliwala building, Atmaram nivas, shop no 5, Mumbai 400006</p>
-          <br>
-          <p>Best regards,<br>The Azza Construction Team</p>
-        </div>
-      `
-    };
-
-    await transporter.sendMail(userMailOptions);
-
-    res.json({ 
-      success: true, 
-      message: 'Message sent successfully! We will get back to you soon.' 
-    });
+    res.json({ success: true, message: 'Message sent successfully!' });
 
   } catch (error) {
-    console.error('Error processing contact form:', error);
+    console.error('🔥 Detailed error:', error);  // <-- Add this line
     res.status(500).json({ 
       success: false, 
       message: 'Error sending message. Please try again later.' 
     });
   }
 });
+
 
 // Endpoint to download Excel file (optional - for admin)
 app.get('/api/download-submissions', (req, res) => {

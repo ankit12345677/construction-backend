@@ -2,5 +2,4 @@ node_modules/
 contact_submissions.xlsx
 credentials.json
 .env
-".env" 
 "credentials.json" 
