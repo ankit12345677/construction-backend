@@ -23,7 +23,7 @@ console.log('🖥️ Port:', process.env.PORT);
 
 
 const auth = new google.auth.GoogleAuth({
-  credentials: {
+  credentials: { 
     type: process.env.GOOGLE_TYPE,
     project_id: process.env.GOOGLE_PROJECT_ID,
     private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
