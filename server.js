@@ -29,7 +29,12 @@ transporter.verify((err, success) => {
 });
 
 // Google Sheets setup
-const credentials = JSON.parse(Buffer.from(process.env.GOOGLE_CREDENTIALS_B64, 'base64').toString());
+if (!process.env.GOOGLE_CREDENTIALS) {
+  throw new Error("GOOGLE_CREDENTIALS env variable is missing!");
+}
+
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+
 
 
 const auth = new google.auth.GoogleAuth({
