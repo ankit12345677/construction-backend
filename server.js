@@ -32,7 +32,7 @@ transporter.verify((error, success) => {
 
 
 // Ensure Excel file exists
-const excelFilePath = path.join('/tmp', 'contact_submissions.xlsx');
+const excelFilePath = path.join(__dirname, 'contact_submissions.xlsx');
 
 const initializeExcelFile = () => {
   if (!fs.existsSync(excelFilePath)) {
@@ -95,14 +95,38 @@ app.post('/api/contact', async (req, res) => {
 
     appendToExcel({ name, email, subject, message, phone: phone || 'Not provided' });
 
-    const mailOptions = {
+    // const mailOptions = {
+    //   from: process.env.EMAIL_USER,
+    //   to: email,
+    //   subject: `New Contact Form Submission: ${subject}`,
+    //   html: `<p>${message}</p>`
+    // };
+
+    const userMailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
-      subject: `New Contact Form Submission: ${subject}`,
-      html: `<p>${message}</p>`
+      subject: 'Thank you for contacting Azza Construction',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Thank You for Contacting Azza Construction!</h2>
+          <p>Dear ${name},</p>
+          <p>We have received your message and will get back to you within 24 hours.</p>
+          <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p><strong>Your Message:</strong></p>
+            <p>${message}</p>
+          </div>
+          <p><strong>Our Contact Information:</strong></p>
+          <p>📞 Phone: (+91) 73041 21012</p>
+          <p>✉️ Email: azzaconstruction55@gmail.com</p>
+          <p>📍 Address: Oppo Jaliwala building, Atmaram nivas, shop no 5, Mumbai 400006</p>
+          <br>
+          <p>Best regards,<br>The Azza Construction Team</p>
+        </div>
+      `
     };
 
-    await transporter.sendMail(mailOptions);
+
+    await transporter.sendMail(userMailOptions);
 
     res.json({ success: true, message: 'Message sent successfully!' });
 
