@@ -16,7 +16,7 @@ app.use(express.static('public'));
 
 // Email transporter configuration
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
+  host: "smtp.zoho.in",
   port: 587,
   secure: false, // TLS
   auth: {
